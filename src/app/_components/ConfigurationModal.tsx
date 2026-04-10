@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "~/trpc/react";
 import type { Script } from "~/types/script";
 import type { Server } from "~/types/server";
@@ -17,6 +17,19 @@ interface IpSuggestionResult {
   status: "available" | "intermittent" | "unverified";
   skippedIntermittent: number;
 }
+
+const isStaticNetworkMode = (value: string | number | boolean | undefined) =>
+  value === "static" || (typeof value === "string" && value.includes("/"));
+
+const getCurrentStaticIpValue = (
+  varNet: string | number | boolean | undefined,
+  varIp: string | number | boolean | undefined,
+): string => {
+  if (typeof varNet === "string" && varNet.includes("/")) {
+    return varNet;
+  }
+  return typeof varIp === "string" ? varIp : "";
+};
 
 interface ConfigurationModalProps {
   isOpen: boolean;
@@ -89,6 +102,10 @@ export function ConfigurationModal({
 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const currentStaticIpValue = useMemo(
+    () => getCurrentStaticIpValue(advancedVars.var_net, advancedVars.var_ip),
+    [advancedVars.var_net, advancedVars.var_ip],
+  );
 
   // Initialize defaults when script/server data is available
   useEffect(() => {
@@ -442,19 +459,18 @@ export function ConfigurationModal({
     onConfirm(cleaned);
   };
 
-  const updateAdvancedVar = (key: string, value: string | number | boolean) => {
+  // Intentionally empty deps: uses functional setState only, so closures stay fresh.
+  const updateAdvancedVar = useCallback((key: string, value: string | number | boolean) => {
     setAdvancedVars((prev) => ({ ...prev, [key]: value }));
-    // Clear error for this field
-    if (errors[key]) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors[key];
-        return newErrors;
-      });
-    }
-  };
+    setErrors((prev) => {
+      if (!prev[key]) return prev;
+      const newErrors = { ...prev };
+      delete newErrors[key];
+      return newErrors;
+    });
+  }, []);
 
-  const fetchSuggestedContainerIp = async () => {
+  const fetchSuggestedContainerIp = useCallback(async (currentStaticValue = "") => {
     if (!server?.id) return;
     setIpSuggestionLoading(true);
     setIpSuggestionError(null);
@@ -467,7 +483,11 @@ export function ConfigurationModal({
         | { success?: false; error?: string };
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error ?? "No available IP suggestion found");
+        const message =
+          typeof (data as { error?: unknown }).error === "string"
+            ? (data as { error: string }).error
+            : "No available IP suggestion found";
+        throw new Error(message);
       }
 
       setIpSuggestion({
@@ -478,10 +498,6 @@ export function ConfigurationModal({
         skippedIntermittent: data.skippedIntermittent,
       });
 
-      const currentStaticValue =
-        typeof advancedVars.var_net === "string" && advancedVars.var_net.includes("/")
-          ? advancedVars.var_net
-          : (advancedVars.var_ip as string | undefined);
       if (!currentStaticValue) {
         updateAdvancedVar("var_ip", data.suggestedCidr);
       }
@@ -493,18 +509,29 @@ export function ConfigurationModal({
     } finally {
       setIpSuggestionLoading(false);
     }
-  };
+  }, [
+    server?.id,
+    allowIntermittentIps,
+    updateAdvancedVar,
+  ]);
 
   useEffect(() => {
     if (!isOpen || mode !== "advanced" || !server?.id) return;
     const netValue = advancedVars.var_net;
-    const isStaticMode =
-      netValue === "static" ||
-      (typeof netValue === "string" && netValue.includes("/"));
+    const isStaticMode = isStaticNetworkMode(netValue);
     if (!isStaticMode) return;
-    void fetchSuggestedContainerIp();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, mode, server?.id, advancedVars.var_net, allowIntermittentIps]);
+    if (currentStaticIpValue) return;
+    if (ipSuggestionLoading) return;
+    void fetchSuggestedContainerIp(currentStaticIpValue);
+  }, [
+    isOpen,
+    mode,
+    server?.id,
+    advancedVars.var_net,
+    currentStaticIpValue,
+    ipSuggestionLoading,
+    fetchSuggestedContainerIp,
+  ]);
 
   if (!isOpen) return null;
 
@@ -738,9 +765,7 @@ export function ConfigurationModal({
                       <option value="static">Static</option>
                     </select>
                   </div>
-                  {(advancedVars.var_net === "static" ||
-                    (typeof advancedVars.var_net === "string" &&
-                      advancedVars.var_net.includes("/"))) && (
+                  {isStaticNetworkMode(advancedVars.var_net) && (
                     <div>
                       <label className="text-foreground mb-2 block text-sm font-medium">
                         IPv4 Address (CIDR) *
@@ -766,7 +791,14 @@ export function ConfigurationModal({
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => void fetchSuggestedContainerIp()}
+                          onClick={() =>
+                            void fetchSuggestedContainerIp(
+                              getCurrentStaticIpValue(
+                                advancedVars.var_net,
+                                advancedVars.var_ip,
+                              ),
+                            )
+                          }
                           disabled={ipSuggestionLoading}
                         >
                           {ipSuggestionLoading

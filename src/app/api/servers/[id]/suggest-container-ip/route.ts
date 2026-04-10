@@ -7,6 +7,8 @@ import { buildIpCandidates, extractIpFromAddress, parseContainerIpRange } from '
 
 const DEFAULT_CONTAINER_IP_RANGE = '192.168.70.1-254';
 const PROBE_ATTEMPTS = 3;
+const IPV4_PATTERN =
+  /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
 
 function runRemoteCommand(
   server: Server,
@@ -50,11 +52,19 @@ function runRemoteCommand(
 }
 
 async function probeIpUsage(server: Server, ip: string): Promise<number | null> {
-  const probeCommand = `bash -lc 'hits=0; for i in $(seq 1 ${PROBE_ATTEMPTS}); do ping -n -c 1 -W 1 ${ip} >/dev/null 2>&1 && hits=$((hits+1)); done; echo "$hits"'`;
+  if (!IPV4_PATTERN.test(ip)) return null;
   try {
-    const { stdout } = await runRemoteCommand(server, probeCommand, 15000);
-    const hitCount = parseInt(stdout.trim().match(/\d+/)?.[0] ?? '', 10);
-    if (Number.isNaN(hitCount)) return null;
+    let hitCount = 0;
+    for (let i = 0; i < PROBE_ATTEMPTS; i += 1) {
+      const { exitCode } = await runRemoteCommand(
+        server,
+        `ping -c 1 -W 1 ${ip}`,
+        5000,
+      );
+      if (exitCode === 0) {
+        hitCount += 1;
+      }
+    }
     return hitCount;
   } catch {
     return null;
@@ -81,7 +91,11 @@ export async function GET(
       return NextResponse.json({ error: 'Server not found' }, { status: 404 });
     }
 
-    const configuredRange = server.container_ip_range?.trim() || DEFAULT_CONTAINER_IP_RANGE;
+    const configuredRangeRaw = server.container_ip_range?.trim();
+    const configuredRange =
+      configuredRangeRaw && configuredRangeRaw.length > 0
+        ? configuredRangeRaw
+        : DEFAULT_CONTAINER_IP_RANGE;
     const parsedRange = parseContainerIpRange(configuredRange);
     if (!parsedRange) {
       return NextResponse.json(

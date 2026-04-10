@@ -28,7 +28,6 @@ export function parseContainerIpRange(
     return null;
   }
   if (startHost > endHost) return null;
-  if (startHost === 0 || endHost === 0) return null;
   if (cidr < 0 || cidr > 32) return null;
 
   return {
