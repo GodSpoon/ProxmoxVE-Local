@@ -18,7 +18,7 @@ class DatabaseServicePrisma {
 
   // Server CRUD operations
   async createServer(serverData) {
-    const { name, ip, user, password, auth_type, ssh_key, ssh_key_passphrase, ssh_port, color, key_generated } = serverData;
+    const { name, ip, container_ip_range, user, password, auth_type, ssh_key, ssh_key_passphrase, ssh_port, color, key_generated } = serverData;
     
     let ssh_key_path = null;
     
@@ -32,6 +32,7 @@ class DatabaseServicePrisma {
       data: {
         name,
         ip,
+        container_ip_range: container_ip_range?.trim() ? container_ip_range.trim() : null,
         user,
         password,
         auth_type: auth_type ?? 'password',
@@ -58,7 +59,7 @@ class DatabaseServicePrisma {
   }
 
   async updateServer(id, serverData) {
-    const { name, ip, user, password, auth_type, ssh_key, ssh_key_passphrase, ssh_port, color, key_generated } = serverData;
+    const { name, ip, container_ip_range, user, password, auth_type, ssh_key, ssh_key_passphrase, ssh_port, color, key_generated } = serverData;
     
     // Get existing server to check for key changes
     const existingServer = await this.getServerById(id);
@@ -103,6 +104,7 @@ class DatabaseServicePrisma {
       data: {
         name,
         ip,
+        container_ip_range: container_ip_range?.trim() ? container_ip_range.trim() : null,
         user,
         password,
         auth_type: auth_type ?? 'password',

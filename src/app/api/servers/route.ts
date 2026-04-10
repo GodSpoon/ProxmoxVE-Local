@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getDatabase } from '../../../server/database-prisma';
 import type { CreateServerData } from '../../../types/server';
 import { withApiLogging } from '../../../server/logging/withApiLogging';
+import { isValidContainerIpRange } from '../../../lib/containerIpRange';
 
 export const GET = withApiLogging(async function GET() {
   try {
@@ -21,7 +22,7 @@ export const GET = withApiLogging(async function GET() {
 export const POST = withApiLogging(async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, ip, user, password, auth_type, ssh_key, ssh_key_passphrase, ssh_port, color, key_generated, ssh_key_path }: CreateServerData = body;
+    const { name, ip, container_ip_range, user, password, auth_type, ssh_key, ssh_key_passphrase, ssh_port, color, key_generated, ssh_key_path }: CreateServerData = body;
 
     // Validate required fields
     if (!name || !ip || !user) {
@@ -36,6 +37,13 @@ export const POST = withApiLogging(async function POST(request: NextRequest) {
     if (Number.isNaN(port) || port < 1 || port > 65535) {
       return NextResponse.json(
         { error: 'SSH port must be between 1 and 65535' },
+        { status: 400 }
+      );
+    }
+
+    if (!isValidContainerIpRange(container_ip_range)) {
+      return NextResponse.json(
+        { error: 'Container IP range must use format 192.168.70.1-254 or 192.168.70.1-254/24' },
         { status: 400 }
       );
     }
@@ -66,6 +74,7 @@ export const POST = withApiLogging(async function POST(request: NextRequest) {
     const result = await db.createServer({ 
       name, 
       ip, 
+      container_ip_range,
       user, 
       password, 
       auth_type: authType,
@@ -100,4 +109,3 @@ export const POST = withApiLogging(async function POST(request: NextRequest) {
     );
   }
 }, { redactBody: true });
-

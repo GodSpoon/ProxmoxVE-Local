@@ -6,6 +6,7 @@ import { Button } from "./ui/button";
 import { SSHKeyInput } from "./SSHKeyInput";
 import { PublicKeyModal } from "./PublicKeyModal";
 import { Key } from "lucide-react";
+import { isValidContainerIpRange } from "~/lib/containerIpRange";
 
 interface ServerFormProps {
   onSubmit: (data: CreateServerData) => void;
@@ -24,6 +25,7 @@ export function ServerForm({
     initialData ?? {
       name: "",
       ip: "",
+      container_ip_range: "192.168.70.1-254",
       user: "",
       password: "",
       auth_type: "password",
@@ -140,6 +142,11 @@ export function ServerForm({
       newErrors.user = "Username is required";
     }
 
+    if (!isValidContainerIpRange(formData.container_ip_range)) {
+      newErrors.container_ip_range =
+        "Use format like 192.168.70.1-254 or 192.168.70.1-254/24";
+    }
+
     // Validate SSH port
     if (
       formData.ssh_port !== undefined &&
@@ -175,6 +182,7 @@ export function ServerForm({
         setFormData({
           name: "",
           ip: "",
+          container_ip_range: "192.168.70.1-254",
           user: "",
           password: "",
           auth_type: "password",
@@ -345,6 +353,33 @@ export function ServerForm({
             {errors.user && (
               <p className="text-destructive mt-1 text-sm">{errors.user}</p>
             )}
+          </div>
+
+          <div>
+            <label
+              htmlFor="container_ip_range"
+              className="text-muted-foreground mb-1 block text-sm font-medium"
+            >
+              Container IP Range
+            </label>
+            <input
+              type="text"
+              id="container_ip_range"
+              value={formData.container_ip_range ?? ""}
+              onChange={handleChange("container_ip_range")}
+              className={`bg-card text-foreground placeholder-muted-foreground focus:ring-ring focus:border-ring w-full rounded-md border px-3 py-2 shadow-sm focus:ring-2 focus:outline-none ${
+                errors.container_ip_range ? "border-destructive" : "border-border"
+              }`}
+              placeholder="192.168.70.1-254"
+            />
+            {errors.container_ip_range && (
+              <p className="text-destructive mt-1 text-sm">
+                {errors.container_ip_range}
+              </p>
+            )}
+            <p className="text-muted-foreground mt-1 text-xs">
+              Used to suggest the next available static IP during container setup.
+            </p>
           </div>
 
           <div>

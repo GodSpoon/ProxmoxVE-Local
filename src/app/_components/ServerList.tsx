@@ -154,6 +154,7 @@ export function ServerList({ servers, onUpdate, onDelete }: ServerListProps) {
                 initialData={{
                   name: server.name,
                   ip: server.ip,
+                  container_ip_range: server.container_ip_range ?? "192.168.70.1-254",
                   user: server.user,
                   password: server.password,
                   auth_type: server.auth_type,
@@ -356,4 +357,3 @@ export function ServerList({ servers, onUpdate, onDelete }: ServerListProps) {
     </div>
   );
 }
-

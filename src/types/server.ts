@@ -2,6 +2,7 @@ export interface Server {
   id: number;
   name: string;
   ip: string;
+  container_ip_range?: string;
   user: string;
   password?: string;
   auth_type?: 'password' | 'key';
@@ -18,6 +19,7 @@ export interface Server {
 export interface CreateServerData {
   name: string;
   ip: string;
+  container_ip_range?: string;
   user: string;
   password?: string;
   auth_type?: 'password' | 'key';
@@ -32,4 +34,3 @@ export interface CreateServerData {
 export interface UpdateServerData extends CreateServerData {
   id: number;
 }
-
