@@ -10,6 +10,14 @@ import { useRegisterModal } from "./modal/ModalStackProvider";
 
 export type EnvVars = Record<string, string | number | boolean>;
 
+interface IpSuggestionResult {
+  suggestedIp: string;
+  suggestedCidr: string;
+  configuredRange: string;
+  status: "available" | "intermittent" | "unverified";
+  skippedIntermittent: number;
+}
+
 interface ConfigurationModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -62,6 +70,14 @@ export function ConfigurationModal({
 
   // Advanced mode state
   const [advancedVars, setAdvancedVars] = useState<EnvVars>({});
+  const [ipSuggestion, setIpSuggestion] = useState<IpSuggestionResult | null>(
+    null,
+  );
+  const [ipSuggestionLoading, setIpSuggestionLoading] = useState(false);
+  const [ipSuggestionError, setIpSuggestionError] = useState<string | null>(
+    null,
+  );
+  const [allowIntermittentIps, setAllowIntermittentIps] = useState(false);
 
   // Discovered SSH keys on the Proxmox host (advanced mode only)
   const [discoveredSshKeys, setDiscoveredSshKeys] = useState<string[]>([]);
@@ -438,6 +454,58 @@ export function ConfigurationModal({
     }
   };
 
+  const fetchSuggestedContainerIp = async () => {
+    if (!server?.id) return;
+    setIpSuggestionLoading(true);
+    setIpSuggestionError(null);
+    try {
+      const response = await fetch(
+        `/api/servers/${server.id}/suggest-container-ip?includeIntermittent=${allowIntermittentIps ? "true" : "false"}`,
+      );
+      const data = (await response.json()) as
+        | ({ success: true } & IpSuggestionResult)
+        | { success?: false; error?: string };
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error ?? "No available IP suggestion found");
+      }
+
+      setIpSuggestion({
+        suggestedIp: data.suggestedIp,
+        suggestedCidr: data.suggestedCidr,
+        configuredRange: data.configuredRange,
+        status: data.status,
+        skippedIntermittent: data.skippedIntermittent,
+      });
+
+      const currentStaticValue =
+        typeof advancedVars.var_net === "string" && advancedVars.var_net.includes("/")
+          ? advancedVars.var_net
+          : (advancedVars.var_ip as string | undefined);
+      if (!currentStaticValue) {
+        updateAdvancedVar("var_ip", data.suggestedCidr);
+      }
+    } catch (error) {
+      setIpSuggestion(null);
+      setIpSuggestionError(
+        error instanceof Error ? error.message : "Failed to suggest IP",
+      );
+    } finally {
+      setIpSuggestionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen || mode !== "advanced" || !server?.id) return;
+    const netValue = advancedVars.var_net;
+    const isStaticMode =
+      netValue === "static" ||
+      (typeof netValue === "string" && netValue.includes("/"));
+    if (!isStaticMode) return;
+    void fetchSuggestedContainerIp();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, mode, server?.id, advancedVars.var_net, allowIntermittentIps]);
+
   if (!isOpen) return null;
 
   const rootfsStorages = rootfsStoragesData?.storages ?? [];
@@ -693,6 +761,57 @@ export function ConfigurationModal({
                         placeholder="10.10.10.1/24"
                         className={errors.var_ip ? "border-destructive" : ""}
                       />
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void fetchSuggestedContainerIp()}
+                          disabled={ipSuggestionLoading}
+                        >
+                          {ipSuggestionLoading
+                            ? "Checking range..."
+                            : "Suggest next available IP"}
+                        </Button>
+                        <label className="flex items-center gap-1 text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={allowIntermittentIps}
+                            onChange={(e) =>
+                              setAllowIntermittentIps(e.target.checked)
+                            }
+                          />
+                          Allow intermittently responding IPs
+                        </label>
+                      </div>
+                      {ipSuggestion && (
+                        <p className="text-muted-foreground mt-2 text-xs">
+                          Suggested:{" "}
+                          <button
+                            type="button"
+                            className="text-primary underline-offset-2 hover:underline"
+                            onClick={() =>
+                              updateAdvancedVar("var_ip", ipSuggestion.suggestedCidr)
+                            }
+                          >
+                            {ipSuggestion.suggestedCidr}
+                          </button>{" "}
+                          from range {ipSuggestion.configuredRange}
+                          {ipSuggestion.status === "intermittent"
+                            ? " (intermittent activity detected)"
+                            : ipSuggestion.status === "unverified"
+                              ? " (probe unavailable)"
+                              : ""}
+                          {ipSuggestion.skippedIntermittent > 0
+                            ? ` • Skipped ${ipSuggestion.skippedIntermittent} intermittently active IP(s)`
+                            : ""}
+                        </p>
+                      )}
+                      {ipSuggestionError && (
+                        <p className="text-destructive mt-2 text-xs">
+                          {ipSuggestionError}
+                        </p>
+                      )}
                       {errors.var_ip && (
                         <p className="text-destructive mt-1 text-xs">
                           {errors.var_ip}

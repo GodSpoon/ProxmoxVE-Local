@@ -29,6 +29,7 @@ model Server {
   id                 Int                @id @default(autoincrement())
   name               String             @unique
   ip                 String
+  container_ip_range String?
   user               String
   password           String?
   auth_type          String?            @default("password")
